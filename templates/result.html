@@ -1,0 +1,23 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <title>Result</title>
+  <link rel="stylesheet" href="/static/style.css">
+</head>
+<body>
+  <a href="/">← Back</a>
+
+  {% if audio_file %}
+    <h2>Download Audio</h2>
+    <audio controls src="{{ url_for('serve_audio', filename=audio_file) }}"></audio>
+    <br><br>
+    <a href="{{ url_for('serve_audio', filename=audio_file) }}" download>Download MP3</a>
+  {% endif %}
+
+  {% if transcript %}
+    <h2>Transcription</h2>
+    <pre>{{ transcript }}</pre>
+  {% endif %}
+</body>
+</html>
