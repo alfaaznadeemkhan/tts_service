@@ -2,3 +2,5 @@ Flask
 #TTS
 gTTS
 pydub
+ffmpeg-python
+openai-whisper
