@@ -1,4 +1,4 @@
-from flask import Flask, request, send_file, render_template, redirect, url_for
+from flask import Flask, request, send_file, render_template, jsonify
 from gtts import gTTS
 import os
 import uuid
@@ -6,11 +6,8 @@ import whisper
 from pydub import AudioSegment
 
 app = Flask(__name__)
-
 AUDIO_DIR = "audio"
-TRANSCRIPTS_DIR = "transcripts"
 os.makedirs(AUDIO_DIR, exist_ok=True)
-os.makedirs(TRANSCRIPTS_DIR, exist_ok=True)
 
 model = whisper.load_model("base")
 
@@ -18,47 +15,43 @@ model = whisper.load_model("base")
 def index():
     return render_template("index.html")
 
+
 @app.route("/tts", methods=["POST"])
 def tts():
-    text = request.form.get("text")
-    lang = request.form.get("language")
+    try:
+        data = request.get_json(force=True)
+        text = data.get("text")
+        if not text:
+            return jsonify({"error": "Text is required"}), 400
 
-    if not text or not lang:
-        return "Text and language are required", 400
+        filepath = os.path.join(AUDIO_DIR, f"{uuid.uuid4()}.mp3")
+        gTTS(text=text, lang="en").save(filepath)
+        return send_file(filepath, mimetype="audio/mpeg")
 
-    filename = f"{uuid.uuid4()}.mp3"
-    filepath = os.path.join(AUDIO_DIR, filename)
-    gTTS(text=text, lang=lang).save(filepath)
+    except Exception as e:
+        return jsonify({"error": str(e)}), 500
 
-    return render_template("result.html", audio_file=filename)
 
 @app.route("/transcribe", methods=["POST"])
 def transcribe():
-    file = request.files.get("audio")
+    file = request.files.get("file")
     if not file:
-        return "No file uploaded", 400
+        return jsonify({"error": "No file uploaded"}), 400
 
     ext = os.path.splitext(file.filename)[1].lower()
     temp_path = os.path.join(AUDIO_DIR, f"{uuid.uuid4()}{ext}")
     file.save(temp_path)
 
-    # Convert to wav if not already
     if ext != ".wav":
-        sound = AudioSegment.from_file(temp_path)
-        temp_path_wav = temp_path.replace(ext, ".wav")
-        sound.export(temp_path_wav, format="wav")
+        audio = AudioSegment.from_file(temp_path)
+        temp_wav_path = temp_path.replace(ext, ".wav")
+        audio.export(temp_wav_path, format="wav")
         os.remove(temp_path)
-        temp_path = temp_path_wav
+        temp_path = temp_wav_path
 
     result = model.transcribe(temp_path)
-    transcript = result.get("text", "")
+    return jsonify({"text": result["text"]})
 
-    transcript_file = os.path.join(TRANSCRIPTS_DIR, f"{uuid.uuid4()}.txt")
-    with open(transcript_file, "w", encoding="utf-8") as f:
-        f.write(transcript)
 
-    return render_template("result.html", transcript=transcript)
-
-@app.route("/audio/<filename>")
-def serve_audio(filename):
-    return send_file(os.path.join(AUDIO_DIR, filename), mimetype="audio/mpeg")
+if __name__ == "__main__":
+    app.run(host="0.0.0.0", port=5000)
