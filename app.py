@@ -2,13 +2,13 @@ from flask import Flask, request, render_template, send_file, jsonify
 from gtts import gTTS
 from faster_whisper import WhisperModel
 from pydub import AudioSegment
-import os, uuid
+import io
+import tempfile
+import os  # ✅ missing import
 
 app = Flask(__name__)
 
-AUDIO_DIR = "audio"
-os.makedirs(AUDIO_DIR, exist_ok=True)
-
+# Load whisper model with low memory footprint
 model = WhisperModel("base.en", compute_type="int8")
 
 @app.route("/")
@@ -21,11 +21,12 @@ def text_to_speech():
     if not text:
         return jsonify({"error": "Text is required"}), 400
 
-    filename = f"{uuid.uuid4()}.mp3"
-    filepath = os.path.join(AUDIO_DIR, filename)
-    gTTS(text=text, lang="en").save(filepath)
+    tts = gTTS(text=text, lang="en")
+    mp3_buffer = io.BytesIO()
+    tts.write_to_fp(mp3_buffer)
+    mp3_buffer.seek(0)
 
-    return send_file(filepath, mimetype="audio/mpeg")
+    return send_file(mp3_buffer, mimetype="audio/mpeg", as_attachment=True, download_name="tts_output.mp3")
 
 @app.route("/transcribe", methods=["POST"])
 def transcribe():
@@ -34,25 +35,27 @@ def transcribe():
         return jsonify({"error": "No audio file uploaded"}), 400
 
     ext = os.path.splitext(file.filename)[1].lower()
-    filepath = os.path.join(AUDIO_DIR, f"{uuid.uuid4()}{ext}")
-    file.save(filepath)
 
-    if ext != ".wav":
-        audio = AudioSegment.from_file(filepath)
-        wav_path = filepath.replace(ext, ".wav")
-        audio.export(wav_path, format="wav")
-        os.remove(filepath)
-        filepath = wav_path
+    with tempfile.NamedTemporaryFile(delete=False, suffix=ext) as tmp:
+        tmp_path = tmp.name
+        file.save(tmp_path)
 
-    segments, _ = model.transcribe(filepath)
-    transcript = " ".join([seg.text for seg in segments])
+    try:
+        if ext != ".wav":
+            audio = AudioSegment.from_file(tmp_path)
+            wav_path = tmp_path.replace(ext, ".wav")
+            audio.export(wav_path, format="wav")
+            os.remove(tmp_path)
+            tmp_path = wav_path
 
-    return jsonify({"text": transcript})
+        segments, _ = model.transcribe(tmp_path)
+        transcript = " ".join([seg.text for seg in segments])
 
-@app.route("/audio/<filename>")
-def serve_audio(filename):
-    return send_file(os.path.join(AUDIO_DIR, filename))
+        return jsonify({"text": transcript})
+
+    finally:
+        if os.path.exists(tmp_path):
+            os.remove(tmp_path)
 
 if __name__ == "__main__":
-    app.run(host="0.0.0.0", port=5050, debug=True)
-
+    app.run(host="0.0.0.0", port=5050, debug=True)  # ✅ Removed trailing comma

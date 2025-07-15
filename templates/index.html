@@ -12,68 +12,95 @@
     <div class="card">
       <h2>🔊 Text to Speech</h2>
       <textarea id="ttsText" placeholder="Enter text here..."></textarea>
-      <button onclick="convertTextToSpeech()">Convert & Download</button>
-      <audio id="ttsAudio" controls style="display:none;"></audio>
+      <button onclick="convertTextToSpeech()" id="ttsBtn">Convert & Play</button>
+      <audio id="ttsAudio" controls style="display:none; margin-top: 10px;"></audio>
+      <br>
+      <button id="downloadBtn" style="display:none; margin-top: 10px;">Download Audio</button>
     </div>
 
     <div class="card">
       <h2>📝 Speech to Text</h2>
       <input type="file" id="audioFile" accept=".wav,.mp3" />
-      <button onclick="convertSpeechToText()">Transcribe</button>
+      <button onclick="convertSpeechToText()" id="sttBtn">Transcribe</button>
       <pre id="sttOutput" class="output"></pre>
     </div>
   </div>
 
   <script>
+    let audioBlob = null;
+
     async function convertTextToSpeech() {
       const text = document.getElementById("ttsText").value;
+      const ttsBtn = document.getElementById("ttsBtn");
+      const audioElement = document.getElementById("ttsAudio");
+      const downloadBtn = document.getElementById("downloadBtn");
+
       if (!text.trim()) return alert("Please enter some text.");
 
-      const response = await fetch("/tts", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ text })
-      });
+      ttsBtn.textContent = "Converting...";
+      ttsBtn.disabled = true;
+      downloadBtn.style.display = "none";
+      audioElement.style.display = "none";
 
-      if (!response.ok) {
-        alert("Failed to convert text to speech.");
-        return;
+      try {
+        const response = await fetch("/tts", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ text })
+        });
+
+        if (!response.ok) throw new Error("Failed to convert text to speech");
+
+        audioBlob = await response.blob();
+        const audioUrl = URL.createObjectURL(audioBlob);
+        audioElement.src = audioUrl;
+        audioElement.style.display = "block";
+        downloadBtn.style.display = "inline-block";
+
+        // Prepare download
+        downloadBtn.onclick = () => {
+          const link = document.createElement("a");
+          link.href = audioUrl;
+          link.download = "tts_output.mp3";
+          link.click();
+        };
+      } catch (err) {
+        alert("Error: " + err.message);
+      } finally {
+        ttsBtn.textContent = "Convert & Play";
+        ttsBtn.disabled = false;
       }
-
-      const blob = await response.blob();
-      const audioUrl = URL.createObjectURL(blob);
-
-      const audioElement = document.getElementById("ttsAudio");
-      audioElement.src = audioUrl;
-      audioElement.style.display = "block";
-
-      // Optional: auto-download
-      const link = document.createElement("a");
-      link.href = audioUrl;
-      link.download = "tts_output.wav";
-      link.click();
     }
 
     async function convertSpeechToText() {
       const fileInput = document.getElementById("audioFile");
       const file = fileInput.files[0];
+      const sttBtn = document.getElementById("sttBtn");
+
       if (!file) return alert("Please upload an audio file.");
+
+      sttBtn.textContent = "Loading...";
+      sttBtn.disabled = true;
 
       const formData = new FormData();
       formData.append("file", file);
 
-      const response = await fetch("/transcribe", {
-        method: "POST",
-        body: formData
-      });
+      try {
+        const response = await fetch("/transcribe", {
+          method: "POST",
+          body: formData
+        });
 
-      if (!response.ok) {
-        alert("Failed to transcribe.");
-        return;
+        if (!response.ok) throw new Error("Transcription failed.");
+
+        const data = await response.json();
+        document.getElementById("sttOutput").textContent = data.text || "No text found.";
+      } catch (err) {
+        alert("Error: " + err.message);
+      } finally {
+        sttBtn.textContent = "Transcribe";
+        sttBtn.disabled = false;
       }
-
-      const data = await response.json();
-      document.getElementById("sttOutput").textContent = data.text || "No text found.";
     }
   </script>
 </body>
