@@ -1,15 +1,24 @@
-from flask import Flask, request, render_template, send_file, jsonify
-from gtts import gTTS
-from faster_whisper import WhisperModel
-from pydub import AudioSegment
 import io
-import tempfile
-import os  # ✅ missing import
+import os
+import time
+from concurrent.futures import ThreadPoolExecutor
+
+import whisper
+from flask import Flask, request, render_template, send_file, jsonify
+from flask_cors import CORS
+from gtts import gTTS
+from pydub import AudioSegment
+
+from transcription_module import transcribe_audio_file
 
 app = Flask(__name__)
+CORS(app)
+executor = ThreadPoolExecutor(max_workers=2)
 
-# Load whisper model with low memory footprint
-model = WhisperModel("base.en", compute_type="int8")
+# Preload whisper model (medium)
+print("Loading Whisper model...")
+model = whisper.load_model("medium")
+print("Model loaded.")
 
 @app.route("/")
 def index():
@@ -21,41 +30,88 @@ def text_to_speech():
     if not text:
         return jsonify({"error": "Text is required"}), 400
 
-    tts = gTTS(text=text, lang="en")
-    mp3_buffer = io.BytesIO()
-    tts.write_to_fp(mp3_buffer)
-    mp3_buffer.seek(0)
+    try:
+        # Convert text to speech
+        tts = gTTS(text=text, lang="en")  # you can use 'hi' for Hindi, etc.
 
-    return send_file(mp3_buffer, mimetype="audio/mpeg", as_attachment=True, download_name="tts_output.mp3")
+        # Save to in-memory buffer
+        mp3_fp = io.BytesIO()
+        tts.write_to_fp(mp3_fp)
+        mp3_fp.seek(0)
+
+        # Convert MP3 to WAV (optional, but better for web audio compatibility)
+        audio = AudioSegment.from_file(mp3_fp, format="mp3")
+        wav_fp = io.BytesIO()
+        audio.export(wav_fp, format="wav")
+        wav_fp.seek(0)
+
+        return send_file(wav_fp, mimetype="audio/wav", as_attachment=False, download_name="output.wav")
+
+    except Exception as e:
+        return jsonify({"error": str(e)}), 500
+
+# @app.route("/tts", methods=["POST"])
+# def text_to_speech():
+#     text = request.json.get("text")
+#     if not text:
+#         return jsonify({"error": "Text is required"}), 400
+#
+#     try:
+#         audio_buffer = synthesize_speech(text)
+#         return send_file(audio_buffer, mimetype="audio/wav", as_attachment=False, download_name="tts_output.wav")
+#     except Exception as e:
+#         return jsonify({"error": str(e)}), 500
+
+
+# @app.route("/transcribe", methods=["POST"])
+# def transcribe_route():
+#     file = request.files.get("file")
+#     if not file:
+#         return jsonify({"error": "No file uploaded"}), 400
+#
+#     future = executor.submit(transcribe_audio_file, file)
+#     result = future.result()
+#
+#     return jsonify(result)
 
 @app.route("/transcribe", methods=["POST"])
 def transcribe():
     file = request.files.get("file")
     if not file:
-        return jsonify({"error": "No audio file uploaded"}), 400
+        return jsonify({"error": "No file uploaded"}), 400
+
+    future = executor.submit(process_audio_file, file)
+    result = future.result()
+
+    return jsonify(result)
+
+def process_audio_file(file):
+    import os, uuid
+
+    start_time = time.time()
 
     ext = os.path.splitext(file.filename)[1].lower()
+    if ext not in [".mp3", ".wav", ".m4a"]:
+        return {"error": "Unsupported file type"}
 
-    with tempfile.NamedTemporaryFile(delete=False, suffix=ext) as tmp:
-        tmp_path = tmp.name
-        file.save(tmp_path)
+    # Save to temp file
+    os.makedirs("temp", exist_ok=True)
+    temp_path = f"temp/{uuid.uuid4()}{ext}"
+    file.save(temp_path)
 
     try:
-        if ext != ".wav":
-            audio = AudioSegment.from_file(tmp_path)
-            wav_path = tmp_path.replace(ext, ".wav")
-            audio.export(wav_path, format="wav")
-            os.remove(tmp_path)
-            tmp_path = wav_path
-
-        segments, _ = model.transcribe(tmp_path)
-        transcript = " ".join([seg.text for seg in segments])
-
-        return jsonify({"text": transcript})
-
+        result = model.transcribe(temp_path, fp16=False, verbose=False)
+        elapsed = round(time.time() - start_time, 2)
+        return {
+            "text": result.get("text", ""),
+            "language": result.get("language", "unknown"),
+            "duration": elapsed
+        }
     finally:
-        if os.path.exists(tmp_path):
-            os.remove(tmp_path)
+        if os.path.exists(temp_path):
+            os.remove(temp_path)
+
 
 if __name__ == "__main__":
-    app.run(host="0.0.0.0", port=5050, debug=True)  # ✅ Removed trailing comma
+    os.makedirs("temp", exist_ok=True)
+    app.run(host="0.0.0.0", port=5050, debug=True)

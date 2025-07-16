@@ -1,4 +1,29 @@
-Flask
-gTTS
-pydub
+Flask~=3.1.1
+flask-cors~=6.0.1
+
+# Whisper + dependencies
+git+https://github.com/openai/whisper.git
+openai-whisper
 faster-whisper
+
+ffmpeg-python
+numpy==1.26.4
+torch~=2.2.2
+torchaudio  # Optional but improves audio support for Whisper
+soundfile
+gTTS
+# Transformers for summarization or TTS if needed
+transformers~=4.38.2
+sentencepiece
+scikit-learn~=1.7.0
+scipy~=1.16.0
+
+# TTS - Coqui TTS (optional, if you're using it)
+TTS==0.22.0
+pydub
+soundfile
+espeakng  # For Coqui to work properly (required in system too)
+
+# Other tools
+uuid
+indic-transliteration
