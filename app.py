@@ -2,14 +2,11 @@ import io
 import os
 import time
 from concurrent.futures import ThreadPoolExecutor
-
 import whisper
 from flask import Flask, request, render_template, send_file, jsonify
 from flask_cors import CORS
 from gtts import gTTS
 from pydub import AudioSegment
-
-from transcription_module import transcribe_audio_file
 
 app = Flask(__name__)
 CORS(app)
@@ -20,10 +17,14 @@ print("Loading Whisper model...")
 model = whisper.load_model("medium")
 print("Model loaded.")
 
+
+# For Showing UI
 @app.route("/")
 def index():
     return render_template("index.html")
 
+
+# Api for Text to speech
 @app.route("/tts", methods=["POST"])
 def text_to_speech():
     text = request.json.get("text")
@@ -50,29 +51,7 @@ def text_to_speech():
     except Exception as e:
         return jsonify({"error": str(e)}), 500
 
-# @app.route("/tts", methods=["POST"])
-# def text_to_speech():
-#     text = request.json.get("text")
-#     if not text:
-#         return jsonify({"error": "Text is required"}), 400
-#
-#     try:
-#         audio_buffer = synthesize_speech(text)
-#         return send_file(audio_buffer, mimetype="audio/wav", as_attachment=False, download_name="tts_output.wav")
-#     except Exception as e:
-#         return jsonify({"error": str(e)}), 500
 
-
-# @app.route("/transcribe", methods=["POST"])
-# def transcribe_route():
-#     file = request.files.get("file")
-#     if not file:
-#         return jsonify({"error": "No file uploaded"}), 400
-#
-#     future = executor.submit(transcribe_audio_file, file)
-#     result = future.result()
-#
-#     return jsonify(result)
 
 @app.route("/transcribe", methods=["POST"])
 def transcribe():
@@ -110,7 +89,6 @@ def process_audio_file(file):
     finally:
         if os.path.exists(temp_path):
             os.remove(temp_path)
-
 
 if __name__ == "__main__":
     os.makedirs("temp", exist_ok=True)
