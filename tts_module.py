@@ -1,7 +1,7 @@
-from TTS.api import TTS
-import tempfile
-import soundfile as sf
 from io import BytesIO
+
+import soundfile as sf
+from TTS.api import TTS
 
 # Load the TTS model once
 tts_model = TTS(model_name="tts_models/en/multi-dataset/tortoise-v2", progress_bar=True)

@@ -10,13 +10,16 @@ from pydub import AudioSegment
 
 app = Flask(__name__)
 CORS(app)
+
+
 executor = ThreadPoolExecutor(max_workers=2)
 
 # Preload whisper model (medium)
 print("Loading Whisper model...")
+
+# Model Level is set to medium
 model = whisper.load_model("medium")
 print("Model loaded.")
-
 
 # For Showing UI
 @app.route("/")
@@ -52,7 +55,7 @@ def text_to_speech():
         return jsonify({"error": str(e)}), 500
 
 
-
+# Api for Transcribe the audio file
 @app.route("/transcribe", methods=["POST"])
 def transcribe():
     file = request.files.get("file")
@@ -64,6 +67,7 @@ def transcribe():
 
     return jsonify(result)
 
+# Function for processing:
 def process_audio_file(file):
     import os, uuid
 
@@ -89,6 +93,7 @@ def process_audio_file(file):
     finally:
         if os.path.exists(temp_path):
             os.remove(temp_path)
+
 
 if __name__ == "__main__":
     os.makedirs("temp", exist_ok=True)
