@@ -1,4 +1,4 @@
-# Hindi TTS Flask API (with Coqui XTTS V2)
+#TTS Flask API
 
 ## Start the server
 ```bash
